@@ -22,7 +22,6 @@ class WeibanHelper:
     project_list = {}
     ocr = None
     finish_exam_time = 0
-    exam_threshold = 1
     headers = {
         "X-Token": "",
         "ContentType": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -70,15 +69,15 @@ class WeibanHelper:
     def run(self):
         for chooseType in [2, 3]:
             finishIdList = self.getFinishIdList(chooseType)
-            num = len(finishIdList)
-            index = 1
-            for i in self.getCourse(chooseType):
-                print(f"{index} / {num}")
-                self.start(i)
-                time.sleep(random.randint(15,20))
-                self.finish(i, finishIdList[i])
-                index = index + 1
-            print("刷课完成")
+        num = len(finishIdList)
+        index = 1
+        for i in self.getCourse(chooseType):
+            print(f"{index} / {num}")
+            self.start(i)
+            time.sleep(random.randint(15, 20))
+            self.finish(i, finishIdList[i])
+            index = index + 1
+        print("刷课完成")
 
     # 以下俩个方法来自https://github.com/Sustech-yx/WeiBanCourseMaster
 
@@ -269,39 +268,25 @@ class WeibanHelper:
             "userId": self.userId,
             "userExamPlanId": plan_id,
         }).json()['data']
-
-        # 提取题目列表
         question_list = paper_data['questionList']
         match_count = 0
-
         for question in question_list:
             question_title = question['title']
             option_list = question['optionList']
             submit_answer_id_list = []
-
-            # 获取答案列表和初始的匹配标志
-            answer_list, _ = get_answer_list(question_title)
-
+            answer_list, is_match = get_answer_list(question_title)
             print(f"题目: {question_title}")
-
-            # 检查题目标题是否匹配
-            if answer_list:
-                # 查找是否有至少一个答案在选项中匹配
-                found_match = False
+            if is_match:
+                match_count = match_count + 1
                 for answer in answer_list:
-                    matched_option = next((option for option in option_list if option['content'] == answer), None)
-                    if matched_option:
-                        submit_answer_id_list.append(matched_option['id'])
-                        print(f"答案: {answer}")
-                        found_match = True
-
-                if found_match:
-                    match_count += 1
-                    print("^^^答案匹配成功^^^\n")
-                else:
-                    print("——————————!!!题目匹配但选项未找到匹配项!!!——————————\n")
+                    for option in option_list:
+                        if option['content'] == answer:
+                            submit_answer_id_list.append(option['id'])
+                            print(f"答案: {answer}")
+                print("\n")
             else:
-                print("——————————!!!未匹配到答案，题库暂未收录此题!!!——————————\n")
+                print("——————————!!!未匹配到答案，题库暂未收录此题!!!——————————")
+                print("\n")
 
             # Record
             record_data = {
@@ -317,7 +302,7 @@ class WeibanHelper:
                           headers=self.headers, data=record_data)
         # SubMit
         print("答案匹配度: ", match_count, " / ", len(question_list))
-        if len(question_list) - match_count > self.exam_threshold:
+        if len(question_list) - match_count >= 1:
             print("题库匹配度过低")
             print("暂未提交,请重新考试")
             return
@@ -387,8 +372,13 @@ class WeibanHelper:
             "userId": self.userId,
             "courseId": courseId,
         }
-        requests.post(get_url_url, data=data, headers=self.headers)
-        token = self.get_method_token(finishId)
+        def get_mid_text(text, start, end):
+            start_index = text.index(start) + len(start)
+            end_index = text.index(end, start_index)
+            return text[start_index:end_index]
+        text = json.loads(requests.post(get_url_url, data=data, headers=self.headers).text)['data']
+        token = get_mid_text(text,"userCourseId=","&tenantCode")
+        # token = self.get_method_token(finishId)
         finish_url = finish_url.format(token)
         ts = self.__get_timestamp().replace(".", "")
         param = {
